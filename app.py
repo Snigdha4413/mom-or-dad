@@ -107,6 +107,9 @@ if f_file and m_file and c_file:
 
     # whole-face verdict
     zf, zm, zc = to_space(prep(f), 'face'), to_space(prep(m), 'face'), to_space(prep(c), 'face')
+    if cos(zf, zm) > 0.99 or cos(zc, zf) > 0.99 or cos(zc, zm) > 0.99:
+        st.warning('Two of the photos look identical. Use three different people for a real result.')
+        st.stop()
     p = dad_percentile(zf, zm, zc, model[f'g_{sex}'])
     st.subheader('Verdict')
     if 0.4 <= p <= 0.6:
@@ -123,11 +126,7 @@ if f_file and m_file and c_file:
     lines = []
     for i, (name, box) in enumerate(zip(model['region_names'], model['region_boxes'])):
         key = f'r{i}'
-        zf, zm, zc = (to_space(region(prep(x), box), key) for x in (f, m, c))    # whole-face verdict
-        zf, zm, zc = to_space(prep(f), 'face'), to_space(prep(m), 'face'), to_space(prep(c), 'face')
-        if cos(zf, zm) > 0.99 or cos(zc, zf) > 0.99 or cos(zc, zm) > 0.99:
-            st.warning('Two of the photos look identical. Use three different people for a real result.')
-            st.stop()
+        zf, zm, zc = (to_space(region(prep(x), box), key) for x in (f, m, c))
         q = dad_percentile(zf, zm, zc, model[f'{key}_g_{sex}'])
         colour = np.array([42, 120, 214]) if q > 0.5 else np.array([232, 123, 164])   # blue = dad, pink = mum
         strength = min(1.0, abs(q - 0.5) * 2.4)
@@ -147,5 +146,5 @@ if f_file and m_file and c_file:
     st.write(f"The child looks more like this couple than like **{np.mean(model['sim_stranger'] < s):.0%}** of "
              f"random couples, and more than {np.mean(model['sim_own'] < s):.0%} of real children resemble their own parents.")
 
-    st.caption('Demo, not a genetic test. Trained on TSKinFace (787 families). The verdict is ranked against '
+    st.caption('Demo, not a genetic test. Trained on TSKinFace (776 families). The verdict is ranked against '
                'children of the same sex, so a son is not called "like dad" just for being a boy.')
