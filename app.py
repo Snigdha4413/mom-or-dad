@@ -1,3 +1,4 @@
+import io
 import os
 import numpy as np
 import cv2
@@ -77,40 +78,32 @@ def big(img):
     return cv2.resize(img, (192, 192), interpolation=cv2.INTER_CUBIC)
 
 
-# ---------------------------------------------------------------- page
-st.title('Mom or Dad?')
-st.write('Upload the father, the mother and their child. Each face is aligned, cleaned and projected into a PCA '
-         'face space with the shared-photo effects removed.')
-
-# example family shipped with the app (photos we have permission to use)
+# ---------------------------------------------------------------- page: Method -> Photos -> Analysis
+S = st.session_state
+S.setdefault('step', 'mode'); S.setdefault('kids', []); S.setdefault('mode', 'upload')
 EXAMPLE = ['examples/father.jpg', 'examples/mother.jpg', 'examples/child.jpg']
-EXAMPLE_IS_SON = True                                             # change if the example child is a daughter
-if all(os.path.exists(p) for p in EXAMPLE) and st.button('Try an example family'):
-    st.session_state['example'] = True
+TYPES = ['jpg', 'jpeg', 'png']
 
-c1, c2, c3 = st.columns(3)
-f_file = c1.file_uploader('Father', type=['jpg', 'jpeg', 'png'])
-m_file = c2.file_uploader('Mother', type=['jpg', 'jpeg', 'png'])
-c_file = c3.file_uploader('Child', type=['jpg', 'jpeg', 'png'])
-son = st.radio('The child is a', ['Son', 'Daughter'], horizontal=True) == 'Son'
 
-if st.session_state.get('example') and not (f_file or m_file or c_file):  # uploading anything replaces the example
-    f_file, m_file, c_file = EXAMPLE
-    son = EXAMPLE_IS_SON
-    st.caption('Showing the example family. Upload your own photos to replace it.')
-kids = 'sons' if son else 'daughters'
-sex = 'son' if son else 'daughter'
+def pick(mode): S.update(mode=mode, step='photos')
+def reset(): S.update(step='mode', kids=[], data=None, ex=False)
+def rd(x): return x.getvalue() if hasattr(x, 'getvalue') else open(x, 'rb').read()
 
-if f_file and m_file and c_file:
-    f, m, c = align(f_file, 'father'), align(m_file, 'mother'), align(c_file, 'child')
-    st.image([big(f), big(m), big(c)], caption=['Father', 'Mother', 'Child'], width=150)
 
-    # whole-face verdict
+def stepper(n):
+    tags = ''.join(f'<span class="{"on" if i <= n else ""}">{i + 1} · {t}</span>' for i, t in enumerate(['Method', 'Photos', 'Analysis']))
+    st.markdown(f'<div class="steps">{tags}</div>', unsafe_allow_html=True)
+
+
+def analyse(f, m, c, son):
+    """Whole-face verdict, feature map and relatedness for one child. Returns dad percentile (or None)."""
+    sex, kids = ('son', 'sons') if son else ('daughter', 'daughters')
     zf, zm, zc = to_space(prep(f), 'face'), to_space(prep(m), 'face'), to_space(prep(c), 'face')
     if cos(zf, zm) > 0.99 or cos(zc, zf) > 0.99 or cos(zc, zm) > 0.99:
         st.warning('Two of the photos look identical. Use three different people for a real result.')
-        st.stop()
+        return None
     p = dad_percentile(zf, zm, zc, model[f'g_{sex}'])
+    st.image([big(f), big(m), big(c)], caption=['Father', 'Mother', 'Child'], width=150)
     st.subheader('Verdict')
     if 0.4 <= p <= 0.6:
         st.info(f'**An even mix.** More like dad than {p:.0%} of {kids} in our data.')
@@ -120,10 +113,8 @@ if f_file and m_file and c_file:
         st.success(f'**Looks more like MUM.** More like mum than {1 - p:.0%} of {kids} in our data.')
     st.progress(float(p), text=f'Mum ◀ {1 - p:.0%} | {p:.0%} ▶ Dad')
 
-    # region map
     st.subheader('Feature by feature')
-    canvas = cv2.resize(c, (256, 256), interpolation=cv2.INTER_CUBIC)
-    lines = []
+    canvas, lines = cv2.resize(c, (256, 256), interpolation=cv2.INTER_CUBIC), []
     for i, (name, box) in enumerate(zip(model['region_names'], model['region_boxes'])):
         key = f'r{i}'
         zf, zm, zc = (to_space(region(prep(x), box), key) for x in (f, m, c))
@@ -133,18 +124,91 @@ if f_file and m_file and c_file:
         top, bottom, left, right = (int(v) * 4 for v in box)
         patch = canvas[top:bottom, left:right].astype(float)
         canvas[top:bottom, left:right] = (patch * (1 - 0.6 * strength) + colour * 0.6 * strength).astype(np.uint8)
-        who = 'dad' if q > 0.5 else 'mum'
-        lines.append(f'**{name}**: like {who} (more than {max(q, 1 - q):.0%} of {kids})')
-    left_col, right_col = st.columns([1, 1.3])
-    left_col.image(canvas, caption='Blue = dad, pink = mum, stronger colour = stronger lean', width=256)
-    right_col.markdown('\n\n'.join(lines))
+        lines.append(f'**{name}**: like {"dad" if q > 0.5 else "mum"} (more than {max(q, 1 - q):.0%} of {kids})')
+    a, b = st.columns([1, 1.3])
+    a.image(canvas, caption='Blue = dad, pink = mum, stronger colour = stronger lean', width=256)
+    b.markdown('\n\n'.join(lines))
 
-    # do they look related?
     st.subheader('Do they look related at all?')
     zc, zp = to_space(prep(c), 'face'), (to_space(prep(f), 'face') + to_space(prep(m), 'face')) / 2
     s = cos(zc, zp)
-    st.write(f"The child looks more like this couple than like **{np.mean(model['sim_stranger'] < s):.0%}** of "
-             f"random couples, and more than {np.mean(model['sim_own'] < s):.0%} of real children resemble their own parents.")
+    st.write(f"Looks more like this couple than **{np.mean(model['sim_stranger'] < s):.0%}** of random couples, "
+             f"and more than {np.mean(model['sim_own'] < s):.0%} of real children resemble their own parents.")
+    return p
 
-    st.caption('Demo, not a genetic test. Trained on TSKinFace (776 families). The verdict is ranked against '
+
+# ---- step 1: how do you want to add photos?
+if S['step'] == 'mode':
+    stepper(0)
+    st.markdown('<span class="mode-marker"></span>', unsafe_allow_html=True)   # tells the page to show the carousel
+    st.title('How would you like to add your photos?')
+    st.caption('Pick a method to begin.')
+    a, b = st.columns(2)
+    with a.container(border=True):
+        st.subheader('Upload photos'); st.write('Choose pictures from your device. You can add several siblings at once.')
+        st.button('Upload from device', on_click=pick, args=('upload',), use_container_width=True)
+    with b.container(border=True):
+        st.subheader('Live camera'); st.write('Take the photos right now with your webcam or phone camera.')
+        st.button('Open camera', on_click=pick, args=('camera',), use_container_width=True)
+
+# ---- step 2: the photos
+elif S['step'] == 'photos':
+    stepper(1)
+    cam = S['mode'] == 'camera'
+    st.title('Add the family')
+    st.caption('Tip: clear, front-facing photos with good light work best.')
+    one = (lambda label, key: st.camera_input(label, key=key)) if cam else (lambda label, key: st.file_uploader(label, type=TYPES, key=key))
+    c1, c2 = st.columns(2)
+    with c1: f = one('Father', 'f')
+    with c2: m = one('Mother', 'm')
+
+    st.subheader('Children')
+    st.caption('Add one child or several siblings. Each one gets their own result.')
+    kids = []
+    if cam:
+        shot = st.camera_input('Take a child photo', key=f'cam{len(S["kids"])}')
+        if shot and st.button('Add this child'):
+            S['kids'].append(shot.getvalue()); st.rerun()
+        kids += [io.BytesIO(k) for k in S['kids']]
+    kids += st.file_uploader('Upload children' if not cam else 'Or upload from device', type=TYPES, accept_multiple_files=True, key='ku')
+
+    if all(os.path.exists(p) for p in EXAMPLE):
+        st.button('Try an example family', on_click=lambda: S.update(ex=True))
+    if S.get('ex') and not (f or m or kids):
+        f, m, kids = EXAMPLE[0], EXAMPLE[1], [EXAMPLE[2]]
+
+    sexes = []
+    for i, k in enumerate(kids):
+        x, y = st.columns([1, 5])
+        x.image(k, width=80)
+        sexes.append(y.radio(f'Child {i + 1} is a', ['Son', 'Daughter'], horizontal=True, key=f'sex{i}') == 'Son')
+
+    back, go = st.columns(2)
+    back.button('← Back', on_click=lambda: S.update(step='mode'), use_container_width=True)
+    ready = bool(f and m and kids)
+    if go.button('Analyze family', type='primary', disabled=not ready, use_container_width=True):
+        S['data'] = {'f': rd(f), 'm': rd(m), 'kids': [(rd(k), s) for k, s in zip(kids, sexes)]}
+        S['step'] = 'results'; st.rerun()
+    if not ready:
+        st.caption('Add a father, a mother and at least one child to continue.')
+
+# ---- step 3: analysis
+else:
+    stepper(2)
+    st.title('Your results')
+    d = S['data']
+    f, m = align(io.BytesIO(d['f']), 'father'), align(io.BytesIO(d['m']), 'mother')
+    summary, ps = st.container(), []
+    tabs = st.tabs([f'Child {i + 1}' for i in range(len(d['kids']))])
+    for i, (tab, (raw, son)) in enumerate(zip(tabs, d['kids'])):
+        with tab:
+            p = analyse(f, m, align(io.BytesIO(raw), f'child {i + 1}'), son)
+            if p is not None: ps.append(p)
+    if len(ps) > 1:
+        avg = float(np.mean(ps))
+        who = 'dad' if avg > 0.5 else 'mum'
+        summary.info(f'**Family overview:** across {len(ps)} children the lean is toward **{who}** '
+                     f'(average {max(avg, 1 - avg):.0%} rank). Open each tab for the individual result.')
+    st.button('Start over', on_click=reset, use_container_width=True)
+    st.caption('Demo, not a genetic test. Trained on TSKinFace (776 families). Each verdict is ranked against '
                'children of the same sex, so a son is not called "like dad" just for being a boy.')
