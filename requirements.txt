@@ -1,5 +1,4 @@
 streamlit
 numpy
-opencv-python-headless<5
+opencv-python-headless>=4.8,<5
 pillow
-scikit-learn==1.8.0
