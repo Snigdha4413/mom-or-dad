@@ -2,7 +2,9 @@
 
 Upload a father, a mother and their child. The app says which parent the child looks more like, overall and feature by feature. Everything is built on PCA (eigenfaces).
 
-**Live demo:** https://mom-or-dad.streamlit.app/
+**Live demo:** open the GitHub Pages site for this repo. The Streamlit app runs entirely in your browser (via [stlite](https://github.com/whitphx/stlite) and Pyodide), so no server is needed and photos never leave your computer. The first load takes about 20–40 seconds. The same `app.py` also runs on Streamlit Cloud: https://mom-or-dad.streamlit.app/
+
+**Example family:** put three photos you have permission to use in `examples/` as `father.jpg`, `mother.jpg` and `child.jpg`. A "Try an example family" button then appears. If the child is a daughter, set `EXAMPLE_IS_SON = False` in `app.py`. TSKinFace images can't be used here, because the dataset can't be redistributed.
 
 ## The main idea
 
@@ -46,12 +48,17 @@ Every step is linear, so each face space is one matrix: `z = (x − mean) @ W`. 
 | File | What it is |
 |---|---|
 | `mom_or_dad_simple.ipynb` | The whole project step by step, with explanations |
-| `app.py` | Streamlit app |
+| `index.html` | GitHub Pages entry point: loads stlite and runs `app.py` in the browser |
+| `app.py` | Streamlit app (same file for GitHub Pages and Streamlit Cloud) |
+| `examples/` | Optional example family photos (add your own) |
 | `model.npz` | Saved face spaces and calibration data (made by the notebook) |
 | `yunet.onnx` | OpenCV face + eye detector (MIT licence, opencv_zoo) |
 
 ## Run
 
+**GitHub Pages:** in the repo, go to Settings → Pages → Deploy from a branch → `main`, folder `/ (root)`. Pages serves `index.html`, which starts the app.
+
+**Locally:**
 ```
 pip install -r requirements.txt
 streamlit run app.py

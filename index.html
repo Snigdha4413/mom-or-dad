@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mom or Dad? PCA live demo</title>
+  <!-- stlite runs the Streamlit app (app.py) inside the browser with Pyodide: no server needed -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.css" />
+  <style>
+    #loading { font-family: system-ui, sans-serif; text-align: center; margin-top: 18vh; color: #444; padding: 0 16px; }
+    #loading small { color: #888; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <h2>Mom or Dad?</h2>
+    <p>Loading the live demo: Python is starting up in your browser.</p>
+    <small>The first visit takes about 20–40 seconds. Later visits are faster.</small>
+  </div>
+  <div id="root"></div>
+
+  <script type="module">
+    import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.js";
+
+    // Files copied into the in-browser Python file system (paths are relative to this page)
+    const files = {
+      "app.py": { url: "app.py" },
+      "model.npz": { url: "model.npz" },
+      "yunet.onnx": { url: "yunet.onnx" },
+    };
+    // The example family is optional: only add the photos that exist
+    for (const name of ["father.jpg", "mother.jpg", "child.jpg"]) {
+      const res = await fetch("examples/" + name, { method: "HEAD" });
+      if (res.ok) files["examples/" + name] = { url: "examples/" + name };
+    }
+
+    document.getElementById("loading").remove();
+    mount(
+      {
+        entrypoint: "app.py",
+        requirements: ["opencv-python", "pillow"],   // numpy and streamlit come with stlite
+        files,
+      },
+      document.getElementById("root")
+    );
+  </script>
+</body>
+</html>

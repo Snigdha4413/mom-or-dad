@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import cv2
 import streamlit as st
@@ -81,11 +82,22 @@ st.title('Mom or Dad?')
 st.write('Upload the father, the mother and their child. Each face is aligned, cleaned and projected into a PCA '
          'face space with the shared-photo effects removed.')
 
+# example family shipped with the app (photos we have permission to use)
+EXAMPLE = ['examples/father.jpg', 'examples/mother.jpg', 'examples/child.jpg']
+EXAMPLE_IS_SON = True                                             # change if the example child is a daughter
+if all(os.path.exists(p) for p in EXAMPLE) and st.button('Try an example family'):
+    st.session_state['example'] = True
+
 c1, c2, c3 = st.columns(3)
 f_file = c1.file_uploader('Father', type=['jpg', 'jpeg', 'png'])
 m_file = c2.file_uploader('Mother', type=['jpg', 'jpeg', 'png'])
 c_file = c3.file_uploader('Child', type=['jpg', 'jpeg', 'png'])
 son = st.radio('The child is a', ['Son', 'Daughter'], horizontal=True) == 'Son'
+
+if st.session_state.get('example') and not (f_file or m_file or c_file):  # uploading anything replaces the example
+    f_file, m_file, c_file = EXAMPLE
+    son = EXAMPLE_IS_SON
+    st.caption('Showing the example family. Upload your own photos to replace it.')
 kids = 'sons' if son else 'daughters'
 sex = 'son' if son else 'daughter'
 
