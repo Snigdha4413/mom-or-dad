@@ -124,6 +124,8 @@ if f_file and m_file and c_file:
     for i, (name, box) in enumerate(zip(model['region_names'], model['region_boxes'])):
         key = f'r{i}'
         zf, zm, zc = (to_space(region(prep(x), box), key) for x in (f, m, c))
+        if cos(zf, zm) > 0.99 or cos(zc, zf) > 0.99 or cos(zc, zm) > 0.99:
+            st.warning('Two of the photos look identical. Use three different people for a real result.')
         q = dad_percentile(zf, zm, zc, model[f'{key}_g_{sex}'])
         colour = np.array([42, 120, 214]) if q > 0.5 else np.array([232, 123, 164])   # blue = dad, pink = mum
         strength = min(1.0, abs(q - 0.5) * 2.4)
